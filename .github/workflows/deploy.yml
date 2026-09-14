@@ -136,12 +136,11 @@ jobs:
           DB_PROFILE: ${{ env.DB_PROFILE }}
           IMAGE_TAG: ${{ env.IMAGE_TAG }}
           DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
-          DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
         with:
           host: ${{ secrets.SSH_HOST }}
           username: ${{ secrets.SSH_USER }}
           key: ${{ secrets.SSH_PRIVATE_KEY }}
-          envs: DB_PROFILE,IMAGE_TAG,DOCKERHUB_USERNAME,DOCKERHUB_TOKEN
+          envs: DB_PROFILE,IMAGE_TAG,DOCKERHUB_USERNAME
           script: |
             set -e
             cd /opt/insight-text2sql
@@ -152,17 +151,24 @@ jobs:
               exit 1
             fi
 
-            # 配置 Docker Hub 国内加速镜像（腾讯云 CVM），避免直连 registry-1.docker.io 被拒
-            MIRROR="https://mirror.ccs.tencentyun.com"
-            if ! grep -q "mirror.ccs.tencentyun.com" /etc/docker/daemon.json 2>/dev/null; then
+            # 配置 Docker Hub 国内加速镜像（腾讯云 / DaoCloud / 163 多备）
+            # 让服务器经国内节点拉取，避免直连 registry-1.docker.io 超时。
+            # 重要：docker login 永远直连 registry-1.docker.io，在中国服务器上必然超时，
+            #       因此本流程要求 Docker Hub 仓库设为【公开】，公开镜像经镜像加速器即可免登录拉取。
+            MIRRORS='["https://mirror.ccs.tencentyun.com","https://docker.m.daocloud.io","https://hub-mirror.c.163.com"]'
+            if ! docker info 2>/dev/null | grep -q "mirror.ccs.tencentyun.com"; then
+              echo "🔧 配置 Docker 镜像加速器并重启 dockerd..."
               sudo mkdir -p /etc/docker
-              echo "{\"registry-mirrors\":[\"$MIRROR\"]}" | sudo tee /etc/docker/daemon.json >/dev/null
-              sudo systemctl restart docker 2>/dev/null || sudo service docker restart 2>/dev/null
-              sleep 8
+              echo "{\"registry-mirrors\":$MIRRORS}" | sudo tee /etc/docker/daemon.json >/dev/null
+              sudo systemctl restart docker 2>/dev/null || sudo service docker restart 2>/dev/null || true
+              # 等待 daemon 真正就绪（最多 ~30s）
+              for i in $(seq 1 15); do
+                docker info >/dev/null 2>&1 && break
+                sleep 2
+              done
             fi
-
-            # 登录 Docker Hub 拉取镜像（Docker Hub 为默认 registry，无需指定地址）
-            echo "$DOCKERHUB_TOKEN" | docker login -u "$DOCKERHUB_USERNAME" --password-stdin
+            echo "🪞 当前生效的镜像加速器："
+            docker info 2>/dev/null | grep -A3 "Registry Mirrors" || true
 
             MYSQL_FILES=""
             if [ "$DB_PROFILE" = "mysql" ]; then
