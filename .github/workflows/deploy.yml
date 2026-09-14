@@ -152,6 +152,15 @@ jobs:
               exit 1
             fi
 
+            # 配置 Docker Hub 国内加速镜像（腾讯云 CVM），避免直连 registry-1.docker.io 被拒
+            MIRROR="https://mirror.ccs.tencentyun.com"
+            if ! grep -q "mirror.ccs.tencentyun.com" /etc/docker/daemon.json 2>/dev/null; then
+              sudo mkdir -p /etc/docker
+              echo "{\"registry-mirrors\":[\"$MIRROR\"]}" | sudo tee /etc/docker/daemon.json >/dev/null
+              sudo systemctl restart docker 2>/dev/null || sudo service docker restart 2>/dev/null
+              sleep 8
+            fi
+
             # 登录 Docker Hub 拉取镜像（Docker Hub 为默认 registry，无需指定地址）
             echo "$DOCKERHUB_TOKEN" | docker login -u "$DOCKERHUB_USERNAME" --password-stdin
 
