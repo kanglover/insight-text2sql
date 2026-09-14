@@ -22,10 +22,10 @@ permissions:
   contents: read
 
 env:
-  # 镜像仓库：腾讯云容器镜像服务（CCR 个人版 / TCR 企业版），值均来自 GitHub Secrets，不硬编码
+  # 镜像仓库：Docker Hub（境外 runner 推送快、服务器可拉取），账号来自 GitHub Secrets，不硬编码
   IMAGE_TAG: ${{ github.sha }}
-  IMAGE_BACKEND: ${{ secrets.CCR_REGISTRY }}/${{ secrets.CCR_NAMESPACE }}/insight-text2sql-backend
-  IMAGE_FRONTEND: ${{ secrets.CCR_REGISTRY }}/${{ secrets.CCR_NAMESPACE }}/insight-text2sql-frontend
+  IMAGE_BACKEND: ${{ secrets.DOCKERHUB_USERNAME }}/insight-text2sql-backend
+  IMAGE_FRONTEND: ${{ secrets.DOCKERHUB_USERNAME }}/insight-text2sql-frontend
 
 jobs:
   # ---------------------------------------------------------------- 测试
@@ -71,17 +71,16 @@ jobs:
 
   # ---------------------------------------------------------------- 构建并推送镜像
   build-and-push:
-    name: 构建并推送镜像到腾讯云 CCR
+    name: 构建并推送镜像到 Docker Hub
     needs: [test-backend, test-frontend]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: 登录腾讯云容器镜像服务
+      - name: 登录 Docker Hub
         uses: docker/login-action@v3
         with:
-          registry: ${{ secrets.CCR_REGISTRY }}
-          username: ${{ secrets.CCR_USERNAME }}
-          password: ${{ secrets.CCR_PASSWORD }}
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
       - name: 构建并推送后端镜像
         uses: docker/build-push-action@v6
         with:
@@ -137,7 +136,7 @@ jobs:
           host: ${{ secrets.SSH_HOST }}
           username: ${{ secrets.SSH_USER }}
           key: ${{ secrets.SSH_PRIVATE_KEY }}
-          envs: DB_PROFILE,IMAGE_TAG,CCR_REGISTRY,CCR_NAMESPACE,CCR_USERNAME,CCR_PASSWORD
+          envs: DB_PROFILE,IMAGE_TAG,DOCKERHUB_USERNAME,DOCKERHUB_TOKEN
           script: |
             set -e
             cd /opt/insight-text2sql
@@ -148,8 +147,8 @@ jobs:
               exit 1
             fi
 
-            # 登录腾讯云容器镜像服务拉取镜像
-            echo "$CCR_PASSWORD" | docker login "$CCR_REGISTRY" -u "$CCR_USERNAME" --password-stdin
+            # 登录 Docker Hub 拉取镜像（Docker Hub 为默认 registry，无需指定地址）
+            echo "$DOCKERHUB_TOKEN" | docker login -u "$DOCKERHUB_USERNAME" --password-stdin
 
             MYSQL_FILES=""
             if [ "$DB_PROFILE" = "mysql" ]; then
@@ -157,8 +156,8 @@ jobs:
             fi
 
             export INSIGHT_IMAGE_TAG="$IMAGE_TAG"
-            export INSIGHT_IMAGE_BACKEND="$CCR_REGISTRY/$CCR_NAMESPACE/insight-text2sql-backend"
-            export INSIGHT_IMAGE_FRONTEND="$CCR_REGISTRY/$CCR_NAMESPACE/insight-text2sql-frontend"
+            export INSIGHT_IMAGE_BACKEND="$DOCKERHUB_USERNAME/insight-text2sql-backend"
+            export INSIGHT_IMAGE_FRONTEND="$DOCKERHUB_USERNAME/insight-text2sql-frontend"
             docker compose -f deploy/docker-compose.prod.yml $MYSQL_FILES pull
             docker compose -f deploy/docker-compose.prod.yml $MYSQL_FILES up -d
             docker image prune -f
