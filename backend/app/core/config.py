@@ -29,8 +29,28 @@ class Settings(BaseSettings):
     # 默认 SQLite，零依赖即可跑起来；生产可通过环境变量切 MySQL / PostgreSQL
     #   MySQL:      mysql+aiomysql://user:pass@host:3306/insight?charset=utf8mb4
     #   PostgreSQL: postgresql+asyncpg://user:pass@host:5432/insight
+    # 完整 DSN（SQLite 默认 / PostgreSQL 等不走组件式的特殊库用这个）
     database_url: str = f"sqlite+aiosqlite:///{DATA_DIR / 'insight.db'}"
+    # 组件式配置：设置 db_host 后自动拼成 MySQL 连接串，便于不同环境只换 host：
+    #   本地裸跑    db_host=127.0.0.1
+    #   docker 开发 db_host=mysql（compose 服务名）
+    #   生产云库    db_host=<rds-endpoint>
+    db_host: str = ""
+    db_port: int = 3306
+    db_user: str = "insight"
+    db_password: str = "Insight_2026"
+    db_name: str = "insight"
     db_echo: bool = False
+
+    @property
+    def effective_database_url(self) -> str:
+        """db_host 优先：设置后自动拼 MySQL 连接串，否则回退到 database_url（SQLite / PG 等）。"""
+        if self.db_host:
+            return (
+                f"mysql+aiomysql://{self.db_user}:{self.db_password}"
+                f"@{self.db_host}:{self.db_port}/{self.db_name}?charset=utf8mb4"
+            )
+        return self.database_url
     # 长连接池的回收周期（秒）。MySQL 默认 wait_timeout=28800，但中间件 / 云数据库
     # 往往更短，池里留下已被对端掐断的连接就会报 2006。配合 pool_pre_ping 双保险。
     db_pool_recycle: int = 1800

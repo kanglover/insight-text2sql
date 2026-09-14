@@ -32,6 +32,14 @@ filterwarnings = ["ignore::SyntaxWarning"]
 # 避免在受限环境里因为 .pytest_cache 目录权限导致整批用例失败。
 addopts = "-p no:cacheprovider"
 
+# 这是「应用」而非被外部 import 的库。声明 package=false 后 uv 不再把根项目
+# 当作 editable 源码包去构建/安装——只把依赖装进 venv，运行/测试时靠 cwd 下的
+# `app` 包导入即可。这同时规避了本机受限构建环境里 editable 构建临时目录撞名
+# （EEXIST）的问题：setuptools 的 editable_wheel 在 uv 构建子进程中熵源异常，
+# 两次构建复用同一临时名而冲突。
+[tool.uv]
+package = false
+
 [tool.ruff]
 line-length = 110
 target-version = "py311"

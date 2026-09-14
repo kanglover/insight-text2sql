@@ -115,4 +115,4 @@ class Database:
         await self.engine.dispose()
 
 
-db = Database(settings.database_url, settings.db_echo)
+db = Database(settings.effective_database_url, settings.db_echo)

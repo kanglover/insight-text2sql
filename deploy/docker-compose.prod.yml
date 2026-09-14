@@ -1,0 +1,40 @@
+# 生产部署基础文件 —— 镜像从 GHCR 拉取，不在服务器本地构建。
+# 默认 SQLite；叠加 deploy/docker-compose.prod.mysql.yml 切换到 MySQL。
+#
+#   SQLite： docker compose -f deploy/docker-compose.prod.yml up -d
+#   MySQL：  docker compose -f deploy/docker-compose.prod.yml -f deploy/docker-compose.prod.mysql.yml up -d
+#
+# 镜像 tag 由环境变量 INSIGHT_IMAGE_TAG 控制（CI 默认用 commit sha，本地可留空用 latest）。
+# LLM_* / MYSQL_* / CORS_ORIGINS / WEB_PORT 等从同目录 .env 读取（compose 自动加载）。
+
+services:
+  backend:
+    image: ghcr.io/kanglover/insight-text2sql-backend:${INSIGHT_IMAGE_TAG:-latest}
+    container_name: insight-backend
+    environment:
+      LLM_PROVIDER: ${LLM_PROVIDER:-rule}
+      LLM_MODEL: ${LLM_MODEL:-glm-4-plus}
+      LLM_BASE_URL: ${LLM_BASE_URL:-https://open.bigmodel.cn/api/paas/v4}
+      LLM_API_KEY: ${LLM_API_KEY:-}
+      LLM_TEMPERATURE: ${LLM_TEMPERATURE:-0}
+      DATABASE_URL: sqlite+aiosqlite:////data/insight.db
+      CORS_ORIGINS: ${CORS_ORIGINS:-*}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+    volumes:
+      # 持久化 SQLite，容器重建后历史会话与日志还在
+      - insight-data:/data
+    restart: unless-stopped
+
+  frontend:
+    image: ghcr.io/kanglover/insight-text2sql-frontend:${INSIGHT_IMAGE_TAG:-latest}
+    container_name: insight-frontend
+    ports:
+      # 改端口：在 .env 里设 WEB_PORT=80 即可直接走 80
+      - "${WEB_PORT:-8080}:80"
+    depends_on:
+      backend:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  insight-data:

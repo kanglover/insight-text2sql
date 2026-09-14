@@ -22,7 +22,13 @@ services:
       LLM_BASE_URL: ${LLM_BASE_URL:-https://open.bigmodel.cn/api/paas/v4}
       LLM_API_KEY: ${LLM_API_KEY:-}
       LLM_TEMPERATURE: ${LLM_TEMPERATURE:-0}
-      DATABASE_URL: sqlite+aiosqlite:////data/insight.db
+      # 默认 SQLite；切 MySQL 时让覆盖层 / --env-file 注入 DB_HOST 即可（DB_HOST 优先级更高）。
+      DATABASE_URL: ${DATABASE_URL:-sqlite+aiosqlite:////data/insight.db}
+      DB_HOST: ${DB_HOST:-}
+      DB_PORT: ${DB_PORT:-3306}
+      DB_USER: ${DB_USER:-insight}
+      DB_PASSWORD: ${DB_PASSWORD:-Insight_2026}
+      DB_NAME: ${DB_NAME:-insight}
       CORS_ORIGINS: ${CORS_ORIGINS:-*}
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
     volumes:
@@ -34,6 +40,12 @@ services:
     build:
       context: .
       dockerfile: deploy/Dockerfile.frontend
+      args:
+        # 留空 = 前端用同源 /api，由容器内 nginx 反代到 backend（默认，推荐，无需配 CORS）。
+        # 只有前后端不同域名时才填，例如 VITE_API_BASE=https://api.example.com，
+        # 同时必须把后端的 CORS_ORIGINS 指到前端域名。
+        # 注意这是构建期参数，改完要 docker compose build --no-cache frontend 才生效。
+        VITE_API_BASE: ${VITE_API_BASE:-}
     image: insight-text2sql-frontend:1.0.0
     container_name: insight-frontend
     ports:

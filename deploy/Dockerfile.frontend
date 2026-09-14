@@ -3,6 +3,13 @@ FROM node:20-alpine AS build
 
 WORKDIR /app
 
+# 接口地址。留空 = 前端用同源相对路径 /api，由 nginx 反代到后端（默认，推荐）。
+# 前后端不在同一域名下时，构建时注入后端地址：
+#   docker build --build-arg VITE_API_BASE=https://api.example.com ...
+# 注意：Vite 环境变量在**构建期**内联进产物，容器启动后再改环境变量无效。
+ARG VITE_API_BASE=""
+ENV VITE_API_BASE=$VITE_API_BASE
+
 # 先只拷贝依赖清单，命中缓存时跳过整个 npm install
 COPY frontend/package.json frontend/package-lock.json ./
 RUN npm ci --no-audit --no-fund

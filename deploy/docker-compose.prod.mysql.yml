@@ -1,0 +1,53 @@
+# 生产 MySQL 覆盖层 —— 叠加在 docker-compose.prod.yml 之上。
+#   docker compose -f deploy/docker-compose.prod.yml -f deploy/docker-compose.prod.mysql.yml up -d
+#
+# 与本地 docker-compose.mysql.yml 的区别：backend 直接用 GHCR 镜像（不再本地构建），
+# mysql 服务、utf8mb4、健康探针、DATABASE_URL 切换、depends_on 均保持一致。
+#
+# ⚠️ 改了 MYSQL_USER / MYSQL_PASSWORD / MYSQL_DATABASE，必须同步改下面的 DATABASE_URL。
+#    compose 不支持在默认值里嵌套引用变量，两者不会自动联动。
+
+services:
+  mysql:
+    image: mysql:8.0
+    container_name: insight-mysql
+    command:
+      # 中文与 emoji 必须 utf8mb4（MySQL 的 utf8 是三字节的 utf8mb3，存不下 emoji）
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_unicode_ci
+      # 让 NOW() 与时区一致，避免 created_at 差 8 小时
+      - --default-time-zone=+08:00
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-Insight_Root_2026}
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-insight}
+      MYSQL_USER: ${MYSQL_USER:-insight}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-Insight_2026}
+      TZ: ${TZ:-Asia/Shanghai}
+    volumes:
+      - insight-mysql:/var/lib/mysql
+      # 首次初始化时执行建库语句；数据卷非空时不会再跑
+      - ./deploy/mysql:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      # $$ 是转义：compose 不会替换它，由容器内 shell 去取真实环境变量
+      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -uroot -p\"$$MYSQL_ROOT_PASSWORD\" --silent"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 40s
+    restart: unless-stopped
+    ports:
+      # 把 MySQL 发布到宿主机，方便用本地客户端连接；如需对外暴露请改/删这行
+      - "13306:3306"
+
+  backend:
+    environment:
+      # 连接串必须带 charset=utf8mb4，否则中文可能展示成问号。
+      # host 写死为 mysql 服务名（容器内 DNS），不能用 127.0.0.1。
+      DATABASE_URL: mysql+aiomysql://${MYSQL_USER:-insight}:${MYSQL_PASSWORD:-Insight_2026}@mysql:3306/${MYSQL_DATABASE:-insight}?charset=utf8mb4
+      TZ: ${TZ:-Asia/Shanghai}
+    depends_on:
+      mysql:
+        condition: service_healthy
+
+volumes:
+  insight-mysql:

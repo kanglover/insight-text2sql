@@ -84,7 +84,13 @@ insight-text2sql/
 │       ├── speech.d.ts         # Web Speech API 类型补全（TS 未内置识别部分）
 │       └── types.ts            # 与后端返回结构一一对应
 │   # 测试与源码同级放置：*.test.ts(x) 共 15 个文件 / 268 个用例
-├── deploy/                     # 两个 Dockerfile + nginx 配置 + MySQL 初始化 SQL
+├── deploy/
+│   ├── Dockerfile.backend
+│   ├── Dockerfile.frontend
+│   ├── nginx.conf                # 容器一体式：静态托管 + 反代 /api（含 SSE 配置）
+│   ├── nginx.standalone.conf     # 前后端分离：宿主机/独立 nginx 用的站点模板
+│   ├── insight-backend.service   # 裸机部署的 systemd 单元
+│   └── mysql/00-init.sql         # 建库（utf8mb4）+ 可选的最小权限 GRANT
 ├── docs/design.md              # 设计文档（问题拆解、流水线、取舍）
 ├── docker-compose.yml          # 基础编排（SQLite，零依赖演示）
 ├── docker-compose.mysql.yml    # ★ MySQL 部署覆盖层（叠加在基础之上）
@@ -95,6 +101,10 @@ insight-text2sql/
 ---
 
 ## 4. 快速开始
+
+> 只想最快看到效果，看 4.1 就够了。
+> 要**正式部署**（前后端分离、systemd 托管、nginx、CDN、验收与排错）请直接跳到
+> [4.5 生产部署详细步骤](#45-生产部署详细步骤)。
 
 ### 4.1 Docker（推荐，两条命令）
 
@@ -187,6 +197,332 @@ docker compose -f docker-compose.yml -f docker-compose.mysql.yml exec mysql \
 # 或者看后端启动日志里的「种子数据写入完成」
 docker compose -f docker-compose.yml -f docker-compose.mysql.yml logs backend | head -40
 ```
+
+### 4.5 生产部署详细步骤
+
+先选形态。三种都能跑，差别只在「前端产物放哪、接口怎么转过去」：
+
+| 形态 | 适用场景 | 后端 | 前端 | 要不要配 CORS |
+| --- | --- | --- | --- | --- |
+| **A. 一体式 compose** | 内网演示、小团队、快速上线 | 容器 | 同一 compose 内的 nginx 容器 | 不需要（同源 `/api`） |
+| **B. 前后端同机分离** | 正式环境，一台机器搞定 | systemd 托管 uvicorn | nginx 静态托管 + 反代 `/api` | 不需要（同源 `/api`） |
+| **C. 前端上 CDN/对象存储** | 前端要独立扩容、走 CDN | 独立域名 | 静态文件上传 OSS/COS | **需要** |
+
+> 建议第一次部署先走 A 跑通全链路，再拆成 B 或 C。A 的容器网络把「反代、端口、CORS」都屏蔽掉了，能快速定位问题是不是出在应用本身。
+
+---
+
+#### 方案 A：一体式 Docker Compose
+
+**1）前置条件**
+
+- Docker 24+（含 Compose v2）：`docker compose version`
+- 开放 `8080`（改端口用 `WEB_PORT`）
+- 磁盘 3 GB 以上（含 MySQL 与镜像层）
+
+**2）准备配置**
+
+```bash
+cd insight-text2sql
+cp .env.example .env
+```
+
+最小改动这几项（演示场景可以什么都不改，直接进第 3 步）：
+
+```bash
+WEB_PORT=8080
+LLM_PROVIDER=rule            # 先离线跑通；确认没问题再改成 auto 接大模型
+MYSQL_PASSWORD=换成强密码     # ⚠️ 改了这里必须同步改 DATABASE_URL
+DATABASE_URL=mysql+aiomysql://insight:换成强密码@mysql:3306/insight?charset=utf8mb4
+```
+
+**3）构建并启动**
+
+```bash
+# 演示（SQLite，零外部依赖）
+docker compose up -d --build
+
+# 生产（MySQL，叠加覆盖层）
+docker compose -f docker-compose.yml -f docker-compose.mysql.yml up -d --build
+# 等价：make up-mysql
+```
+
+首次启动后端会**自动建表 + 灌入自制数据集**，MySQL 健康探针通过之前后端不会启动，所以不用手动编排顺序。初始化约需 20–60 秒（看磁盘）。
+
+**4）验证**
+
+```bash
+curl -fsS http://localhost:8080/api/health          # 应返回 {"code":0,...}
+open http://localhost:8080                          # 前端
+open http://localhost:8080/docs                     # 接口文档
+```
+
+**5）日常运维**
+
+```bash
+make logs                    # 跟踪日志（MySQL 版用 make logs-mysql）
+docker compose ps            # 看容器状态
+docker compose restart backend
+make down                    # 停止，保留数据卷
+make reset                   # ⚠️ 停止并删除数据卷，历史会话与日志会清空
+```
+
+**6）更新发布**
+
+只改了后端就只重建后端，避免前端被连带重跑一遍 npm build：
+
+```bash
+git pull
+docker compose -f docker-compose.yml -f docker-compose.mysql.yml build backend
+docker compose -f docker-compose.yml -f docker-compose.mysql.yml up -d --no-deps backend
+```
+
+改了前端样式或依赖时：
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.mysql.yml build frontend
+docker compose -f docker-compose.yml -f docker-compose.mysql.yml up -d --no-deps frontend
+```
+
+---
+
+#### 方案 B：前后端同机分离部署
+
+##### B-1 部署后端
+
+**① 装依赖**
+
+```bash
+# Python 3.11+（镜像里用 3.12）
+python3 -V
+sudo apt install -y python3-venv python3-dev build-essential   # Debian/Ubuntu
+# RHEL 系：sudo dnf install -y python3-devel gcc
+```
+
+**② 建数据库**
+
+```bash
+# 会建 insight 库（utf8mb4）
+mysql -uroot -p < deploy/mysql/00-init.sql
+
+# 建应用账号。首次启动要自动建表，所以先给库级权限
+mysql -uroot -p -e "
+CREATE USER 'insight'@'localhost' IDENTIFIED BY '换成强密码';
+GRANT ALL PRIVILEGES ON insight.* TO 'insight'@'localhost';
+FLUSH PRIVILEGES;"
+```
+
+想收紧权限的话走两步：先用管理员跑一次 `python -m scripts.seed` 把表和数据建好，再放开
+`deploy/mysql/00-init.sql` 里那段注释掉的 `GRANT`，让应用账号对 `dw_*` / `meta_*` 只剩
+`SELECT`（业务表 `biz_*` 仍需读写）。这样即使 SQL 网关被绕过，数仓在数据库层面也写不动。
+
+**③ 放代码、装包**
+
+```bash
+sudo mkdir -p /opt/insight-text2sql
+sudo chown -R $USER /opt/insight-text2sql
+cp -r . /opt/insight-text2sql/
+
+cd /opt/insight-text2sql/backend
+python3 -m venv .venv
+.venv/bin/pip install --upgrade pip
+.venv/bin/pip install -r requirements.txt      # 已含 aiomysql + cryptography
+```
+
+**④ 写 `.env`**
+
+```bash
+DATABASE_URL=mysql+aiomysql://insight:换成强密码@127.0.0.1:3306/insight?charset=utf8mb4
+CORS_ORIGINS=http://127.0.0.1:8000
+LLM_PROVIDER=rule
+LOG_LEVEL=INFO
+```
+
+连接串**必须带 `?charset=utf8mb4`**，否则中文会变问号。
+
+**⑤ 先单 worker 跑一次，把种子数据灌进去**
+
+```bash
+.venv/bin/uvicorn app.main:app --host 127.0.0.1 --port 8000 --workers 1
+```
+
+看到日志里的「种子数据写入完成」后 `Ctrl-C`。
+
+> ⚠️ **这一步必须单 worker。** 建表 + 灌种子跑在 FastAPI 的 `lifespan` 里，**每个 worker 各跑一次**，
+> 4 个 worker 并发会重复灌数据。种子灌完后再改回多 worker。
+
+**⑥ 交给 systemd 托管**
+
+```bash
+sudo useradd -r -s /sbin/nologin insight
+sudo chown -R insight:insight /opt/insight-text2sql
+sudo cp deploy/insight-backend.service /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable --now insight-backend
+sudo systemctl status insight-backend
+```
+
+确认没问题后，把 unit 里的 `--workers 1` 改成 `--workers 4`（MySQL 下才安全；SQLite 保持 1），
+再 `sudo systemctl restart insight-backend`。
+
+**⑦ 验证**
+
+```bash
+curl -fsS http://127.0.0.1:8000/api/health
+cd /opt/insight-text2sql/backend && .venv/bin/python -m scripts.ask "2026年各经营单元的收入"
+```
+
+##### B-2 部署前端
+
+**① 构建**
+
+```bash
+cd frontend
+npm ci                 # 按 lock 文件装，保证与本地构建一致
+npm run build          # 产物在 frontend/dist
+ls -lh dist/assets
+```
+
+同源部署（nginx 反代 `/api`）**不需要**设 `VITE_API_BASE`，留空即可——前端代码里写的就是相对路径 `/api`。
+
+> `npm run preview` 只适合本地看一眼，它是 Vite 的开发服务器，别拿它对外服务。
+
+**② 交给 nginx**
+
+```bash
+sudo mkdir -p /var/www/insight
+sudo cp -r dist/* /var/www/insight/
+sudo cp deploy/nginx.standalone.conf /etc/nginx/conf.d/insight.conf
+sudo nginx -t && sudo systemctl reload nginx
+```
+
+`deploy/nginx.standalone.conf` 默认反代到 `http://127.0.0.1:8000`，后端不在这台机器就改这一行：
+
+```bash
+sudo sed -i 's|proxy_pass http://127.0.0.1:8000;|proxy_pass http://10.0.0.8:8000;|' /etc/nginx/conf.d/insight.conf
+```
+
+配置里两处不能省：`try_files ... /index.html`（否则刷新 `/logs` 会 404）、
+`proxy_buffering off`（否则 SSE 会被攒着不发，问数看起来「卡住几十秒后突然出结果」）。
+
+**③ 验证**
+
+```bash
+curl -o /dev/null -w '%{http_code}\n' http://你的域名/           # 200
+curl -o /dev/null -w '%{http_code}\n' http://你的域名/logs       # 200（history 路由回落）
+curl -fsS http://你的域名/api/health                             # 反代通
+```
+
+---
+
+#### 方案 C：前端上对象存储 / CDN（跨域形态）
+
+前端产物是纯静态的，理论上丢到任意静态托管就行，但**问数是 SSE 长连接**，CDN 和对象存储都可能缓冲它。
+
+**① 构建时注入后端地址**
+
+```bash
+cd frontend
+VITE_API_BASE=https://api.example.com npm run build
+```
+
+`VITE_API_BASE` 是**构建期**内联进产物的——部署后再改环境变量无效，必须重新 build。
+用 Docker 构建时对应 `--build-arg VITE_API_BASE=...`：
+
+```bash
+docker build -f deploy/Dockerfile.frontend \
+  --build-arg VITE_API_BASE=https://api.example.com -t insight-frontend .
+```
+
+**② 后端放开跨域**
+
+```bash
+CORS_ORIGINS=https://insight.example.com      # 多个用逗号分隔，不要在生产用 *
+```
+
+后端不会自动带上「当前站点」，填错了前端会报 CORS 错误，且错误信息里不会告诉你该填什么。
+
+**③ 关掉 CDN 对 `/api/*` 的缓冲**
+
+这一步最容易漏：CDN 默认会缓存并缓冲响应，SSE 会被攒成一次性返回。
+在 CDN 控制台给 `/api/chat/stream` 单独配置：**不缓存、关闭响应缓冲、读超时 ≥ 300s**。
+对象存储直传场景没有这个问题，但前端要走自定义域名时同样要检查。
+
+---
+
+#### 部署后验收清单
+
+按顺序跑一遍，全绿才算部署完成：
+
+```bash
+# 1. 后端活着
+curl -fsS http://127.0.0.1:8000/api/health
+
+# 2. 前端可访问 + history 路由不 404
+curl -o /dev/null -w '%{http_code}\n' http://你的域名/
+curl -o /dev/null -w '%{http_code}\n' http://你的域名/logs
+
+# 3. 反代通（经前端域名能打到后端）
+curl -fsS http://你的域名/api/health
+
+# 4. SSE 是「逐步吐出」而不是「一次性返回」
+#    正常会看到事件一条条打印；如果卡住几十秒后一起出现，就是缓冲没关
+curl -N -X POST http://你的域名/api/chat/stream \
+  -H 'Content-Type: application/json' \
+  -d '{"question":"各经营单元的收入情况"}'
+
+# 5. 中文没乱码（MySQL 部署必查）
+mysql -uinsight -p insight -e "SELECT org_name FROM dw_dim_org LIMIT 3"
+
+# 6. 日志落库
+curl -fsS "http://你的域名/api/logs?page=1&page_size=5" | head -c 300
+```
+
+---
+
+#### 常见故障排查
+
+| 现象 | 原因 | 处理 |
+| --- | --- | --- |
+| 问数卡住不动，几十秒后一次出全部结果 | nginx / CDN 缓冲了 SSE | `proxy_buffering off`；CDN 给 `/api/chat/stream` 关缓存 |
+| 刷新 `/logs` 报 404 | nginx 缺 history 回落 | `try_files $uri $uri/ /index.html;` |
+| 前端报 CORS 错误 | 跨域部署但没配 `CORS_ORIGINS` | 填前端**完整域名**（含 scheme），逗号分隔多个 |
+| 中文变问号 `???` | 库或连接串不是 utf8mb4 | 建库 `utf8mb4` + 连接串带 `?charset=utf8mb4` |
+| `can't connect to MySQL server` | `DATABASE_URL` 写错 / 账号没授权 | 用 `mysql -uinsight -p -h 地址` 先手工连通 |
+| `cryptography package is required` | 缺 `cryptography` | `pip install -r requirements.txt`（已含） |
+| 跑一阵子报 `2006 Server has gone away` | 空闲连接被掐断 | 已开 `pool_pre_ping` + `pool_recycle`；仍有问题调 `DB_POOL_RECYCLE` |
+| 数据被灌了两三遍 | 多 worker 并发跑种子 | 首次启动保持 `--workers 1`，灌完再扩容 |
+| 改了 `.env` 没生效 | 容器只在启动时读 env | `docker compose up -d` 重建容器；systemd 用 `systemctl restart` |
+| 改了 `VITE_API_BASE` 没生效 | Vite 变量构建期内联 | 重新 `npm run build` / `docker build --build-arg` |
+| 页面白屏，F12 报 404 | 静态资源路径不对 | 确认 nginx `root` 指向 `dist` 目录本身 |
+| `ONLY_FULL_GROUP_BY` 报 1055 | MySQL 8 默认开启，比 SQLite 严格 | 规则引擎模板已保证完整分组；大模型偶发写错会自动修正重试 |
+
+---
+
+#### 备份与回滚
+
+```bash
+# 密码从环境变量取，不要写进命令（会留在 shell history 里）
+export MYSQL_PASSWORD='你的密码'
+
+# MySQL 备份（compose 部署；-T 不加会在重定向时混入 TTY 控制字符）
+docker compose -f docker-compose.yml -f docker-compose.mysql.yml exec -T mysql \
+  mysqldump -uinsight -p"$MYSQL_PASSWORD" --single-transaction --routines insight \
+  > insight_$(date +%F).sql
+
+# 裸机部署
+mysqldump -uinsight -p"$MYSQL_PASSWORD" --single-transaction insight \
+  | gzip > insight_$(date +%F).sql.gz
+
+# 恢复
+mysql -uinsight -p"$MYSQL_PASSWORD" insight < insight_2026-09-14.sql
+
+# 回滚代码
+git checkout <上一个 tag> && docker compose -f ... up -d --build
+```
+
+真正需要备份的是 `biz_*`（会话、日志、反馈、配置）与 `meta_*`（元数据知识库，由脚本生成但可能被人工调整）。
+`dw_*` 是自建演示数据集，`python -m scripts.seed` 可随时重建。
 
 ---
 

@@ -1,0 +1,58 @@
+# 后端 systemd 单元（不开 Docker、直接跑在服务器上的部署方式）。
+#
+# 安装：
+#   sudo cp deploy/insight-backend.service /etc/systemd/system/
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now insight-backend
+#   sudo journalctl -u insight-backend -f
+#
+# 两个前提：
+#   1) 代码在 /opt/insight-text2sql，虚拟环境在 backend/.venv；
+#   2) /opt/insight-text2sql/backend/.env 存在（见 .env.example）。
+
+[Unit]
+Description=Insight Text2SQL Backend
+Documentation=https://github.com/your-org/insight-text2sql
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+# ---- 运行身份：建议用专用低权限账号，不要用 root ----
+User=insight
+Group=insight
+
+WorkingDirectory=/opt/insight-text2sql/backend
+
+# systemd 不会加载 shell profile，PATH 要写全
+Environment="PATH=/opt/insight-text2sql/backend/.venv/bin:/usr/local/bin:/usr/bin:/bin"
+
+# 环境变量文件。注意 systemd 的 EnvironmentFile 语法比 .env 严格：
+#   - 只认 KEY=value，不做变量展开（DATABASE_URL=$MYSQL_PWD 不会生效）
+#   - 值里有空格或 # 要用引号包起来
+#   - 不要把 .env.example 直接拷过来，那里有中文注释，请按需精简
+EnvironmentFile=/opt/insight-text2sql/backend/.env
+
+# --workers 只在 MySQL / PostgreSQL 下开。
+# SQLite 多进程写会锁库，保持 1。
+# 首次启动必须保持 --workers 1：lifespan 会在每个 worker 里各跑一次建表+灌种子，
+# 多 worker 并发会重复灌数据。种子灌完后再改回 4 并 restart。
+ExecStart=/opt/insight-text2sql/backend/.venv/bin/uvicorn app.main:app \
+    --host 127.0.0.1 --port 8000 --workers 1
+
+# 优雅重启：先起新的再停旧的，避免 SSE 长连接被硬切
+ExecReload=/bin/kill -HUP $MAINPID
+Restart=always
+RestartSec=5
+KillSignal=SIGTERM
+TimeoutStopSec=30
+
+# ---- 安全加固（按需裁剪）----
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+# 需要写日志时放开下面两行，并把日志目录改成实际路径
+# ReadWritePaths=/var/log/insight
+ProtectHome=true
+
+[Install]
+WantedBy=multi-user.target

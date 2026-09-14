@@ -1,0 +1,167 @@
+name: CI/CD — Build, Test & Deploy
+
+# 触发：
+#   1) push 到 main 分支 → 自动 测试 → 构建镜像 → 部署到服务器（默认 MySQL 配置）
+#   2) 手动 workflow_dispatch → 可选 db_profile: mysql / sqlite
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      db_profile:
+        description: "数据库配置：mysql（生产，默认）或 sqlite（零依赖演示）"
+        required: true
+        default: "mysql"
+        type: choice
+        options:
+          - mysql
+          - sqlite
+
+# 推送到 GHCR 需要写包权限；读取仓库源码需要读权限
+permissions:
+  contents: read
+  packages: write
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_BACKEND: ghcr.io/kanglover/insight-text2sql-backend
+  IMAGE_FRONTEND: ghcr.io/kanglover/insight-text2sql-frontend
+  # 用 commit sha 作为镜像 tag，保证每次部署可复现、可回滚
+  IMAGE_TAG: ${{ github.sha }}
+
+jobs:
+  # ---------------------------------------------------------------- 测试
+  test-backend:
+    name: 后端单测 + 风格检查
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+      - name: 安装依赖与测试工具
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt pytest pytest-asyncio ruff
+      - name: 代码风格检查（ruff）
+        run: python -m ruff check .
+      - name: 运行单测（内存 SQLite，不落盘）
+        run: python -m pytest -q
+
+  test-frontend:
+    name: 前端类型检查 + 生产构建
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: 安装依赖
+        run: npm ci --no-audit --no-fund
+      - name: 类型检查 + 生产构建
+        run: npm run build
+
+  # ---------------------------------------------------------------- 构建并推送镜像
+  build-and-push:
+    name: 构建并推送镜像到 GHCR
+    needs: [test-backend, test-frontend]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: 登录 GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: 构建并推送后端镜像
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: deploy/Dockerfile.backend
+          push: true
+          tags: |
+            ${{ env.IMAGE_BACKEND }}:${{ env.IMAGE_TAG }}
+            ${{ env.IMAGE_BACKEND }}:latest
+      - name: 构建并推送前端镜像
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: deploy/Dockerfile.frontend
+          push: true
+          tags: |
+            ${{ env.IMAGE_FRONTEND }}:${{ env.IMAGE_TAG }}
+            ${{ env.IMAGE_FRONTEND }}:latest
+
+  # ---------------------------------------------------------------- 部署到服务器
+  deploy:
+    name: 部署到腾讯轻量云服务器
+    needs: build-and-push
+    runs-on: ubuntu-latest
+    env:
+      DB_PROFILE: ${{ github.event.inputs.db_profile || 'mysql' }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 在服务器创建部署目录
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          script: mkdir -p /opt/insight-text2sql
+
+      - name: 复制部署文件（compose + mysql 初始化脚本）
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          source: "deploy"
+          target: "/opt/insight-text2sql"
+          strip_components: 0
+
+      - name: 远程拉取镜像并重启服务
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          envs: DB_PROFILE,IMAGE_TAG,GITHUB_TOKEN
+          script: |
+            set -e
+            cd /opt/insight-text2sql
+
+            # 服务器必须已有 .env（含 LLM_API_KEY / MYSQL_PASSWORD 等密钥），由你手动维护，不会被覆盖
+            if [ ! -f .env ]; then
+              echo "❌ 服务器缺少 /opt/insight-text2sql/.env，请先按说明创建后再部署"
+              exit 1
+            fi
+
+            # 登录 GHCR 拉取镜像（GITHUB_TOKEN 在本次任务期间有效，可拉取本仓库包）
+            echo "$GITHUB_TOKEN" | docker login ghcr.io -u "${{ github.repository_owner }}" --password-stdin
+
+            MYSQL_FILES=""
+            if [ "$DB_PROFILE" = "mysql" ]; then
+              MYSQL_FILES="-f deploy/docker-compose.prod.mysql.yml"
+            fi
+
+            export INSIGHT_IMAGE_TAG="$IMAGE_TAG"
+            docker compose -f deploy/docker-compose.prod.yml $MYSQL_FILES pull
+            docker compose -f deploy/docker-compose.prod.yml $MYSQL_FILES up -d
+            docker image prune -f
+
+            echo "✅ 部署完成，当前服务状态："
+            docker compose -f deploy/docker-compose.prod.yml $MYSQL_FILES ps
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

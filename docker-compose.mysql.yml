@@ -41,11 +41,22 @@ services:
       retries: 12
       start_period: 40s
     restart: unless-stopped
+    ports:
+      # 把 MySQL 发布到宿主机，方便用本地客户端 / 本地应用连接。
+      # 注意：你另一套 mysql 容器已占用宿主机 3306，这里改用 13306 避免冲突。
+      - "13306:3306"
 
   backend:
     environment:
-      # 连接串必须带 charset=utf8mb4，否则中文可能展示成问号
-      DATABASE_URL: ${DATABASE_URL:-mysql+aiomysql://insight:Insight_2026@mysql:3306/insight?charset=utf8mb4}
+      # 组件式：只把 host 换成 mysql 服务名，其余账号/库名沿用根 .env 的 MYSQL_* 变量。
+      # 这样本地 / 容器 / 生产三套环境只用改 DB_HOST（127.0.0.1 / mysql / 云库域名），
+      # 不再需要把整串写死，也不会被 .env 里的地址覆盖。
+      # 部署到外部 MySQL 时不带本覆盖层，改用 --env-file deploy.env 注入 DB_HOST 即可。
+      DB_HOST: mysql
+      DB_PORT: ${DB_PORT:-3306}
+      DB_USER: ${MYSQL_USER:-insight}
+      DB_PASSWORD: ${MYSQL_PASSWORD:-Insight_2026}
+      DB_NAME: ${MYSQL_DATABASE:-insight}
       TZ: ${TZ:-Asia/Shanghai}
     depends_on:
       mysql:
