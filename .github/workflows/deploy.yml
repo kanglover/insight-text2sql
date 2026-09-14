@@ -119,7 +119,9 @@ jobs:
           host: ${{ secrets.SSH_HOST }}
           username: ${{ secrets.SSH_USER }}
           key: ${{ secrets.SSH_PRIVATE_KEY }}
-          script: mkdir -p /opt/insight-text2sql
+          script: |
+            sudo mkdir -p /opt/insight-text2sql
+            sudo chown $USER:$USER /opt/insight-text2sql
 
       - name: 复制部署文件（compose + mysql 初始化脚本）
         uses: appleboy/scp-action@v0.1.7
