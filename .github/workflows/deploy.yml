@@ -132,6 +132,11 @@ jobs:
 
       - name: 远程拉取镜像并重启服务
         uses: appleboy/ssh-action@v1.0.3
+        env:
+          DB_PROFILE: ${{ env.DB_PROFILE }}
+          IMAGE_TAG: ${{ env.IMAGE_TAG }}
+          DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+          DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
         with:
           host: ${{ secrets.SSH_HOST }}
           username: ${{ secrets.SSH_USER }}
