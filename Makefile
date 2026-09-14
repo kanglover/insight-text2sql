@@ -2,9 +2,9 @@
 # 依赖：Python 3.11+、Node 18+；Docker 相关目标需要 docker + docker compose。
 
 PY ?= python3
-VENV ?= .venv
+VENV ?= backend/.venv
 PIP := $(VENV)/bin/pip
-PYBIN := $(VENV)/bin/python
+PYBIN := $(CURDIR)/$(VENV)/bin/python
 NPM ?= npm
 WEB_PORT ?= 8080
 
@@ -27,35 +27,35 @@ setup: venv ## 一次性初始化前后端依赖
 	cd frontend && $(NPM) install
 
 seed: ## 重建演示数据库（维度 + 事实 + 元数据 + 样例问答）
-	cd backend && ../$(PYBIN) -m scripts.seed --stats
+	cd backend && $(PYBIN) -m scripts.seed --stats
 
 seed-keep: ## 只补数据，不清空已有库
-	cd backend && ../$(PYBIN) -m scripts.seed --keep
+	cd backend && $(PYBIN) -m scripts.seed --keep
 
 backend: ## 启动后端（http://127.0.0.1:8000，接口文档 /docs）
-	cd backend && ../$(PYBIN) -m uvicorn app.main:app --host 127.0.0.1 --port 8000 --reload
+	cd backend && $(PYBIN) -m uvicorn app.main:app --host 127.0.0.1 --port 8000 --reload
 
 frontend: ## 启动前端开发服务器（http://127.0.0.1:5173，已代理 /api）
 	cd frontend && $(NPM) run dev
 
 ask: ## 命令行问数：make ask Q="2026年各经营单元的收入和完成率"
-	cd backend && ../$(PYBIN) -m scripts.ask "$(Q)"
+	cd backend && $(PYBIN) -m scripts.ask "$(Q)"
 
 # ------------------------------------------------------------------ 质量
 
 test: test-backend test-frontend ## 跑全部测试
 
 test-backend: ## 跑后端单测（内存 SQLite，不落盘）
-	cd backend && ../$(PYBIN) -m pytest -q
+	cd backend && $(PYBIN) -m pytest -q
 
 test-frontend: ## 跑前端单测（vitest）
 	cd frontend && $(NPM) run test
 
 test-verbose: ## 跑后端单测并输出每个用例
-	cd backend && ../$(PYBIN) -m pytest -v
+	cd backend && $(PYBIN) -m pytest -v
 
 lint: ## 代码风格检查（ruff）
-	cd backend && ../$(PYBIN) -m ruff check .
+	cd backend && $(PYBIN) -m ruff check .
 
 typecheck: ## 前端类型检查
 	cd frontend && $(NPM) run typecheck
