@@ -31,6 +31,13 @@ services:
     ports:
       # 改端口：在 .env 里设 WEB_PORT=80 即可直接走 80
       - "${WEB_PORT:-8080}:80"
+      # HTTPS：443 加密 SSE 流式，规避大陆网络对明文 HTTP 流式的拦截（表现为 503）
+      - "443:443"
+    volumes:
+      # 自签名证书（部署脚本生成在宿主机 /opt/insight-text2sql/certs）
+      - /opt/insight-text2sql/certs:/etc/nginx/certs:ro
+      # 允许宿主机 nginx.conf 覆盖镜像内烤入的配置，便于热更新且 SCP 同步即生效
+      - /opt/insight-text2sql/deploy/nginx.conf:/etc/nginx/conf.d/default.conf:ro
     depends_on:
       backend:
         condition: service_healthy

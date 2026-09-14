@@ -175,6 +175,22 @@ jobs:
               MYSQL_FILES="-f deploy/docker-compose.prod.mysql.yml"
             fi
 
+            # 生成自签名证书，供前端 443(HTTPS) 使用（裸 IP 无需备案/域名）。
+            # 证书放在 /opt/insight-text2sql/certs，由 compose 卷挂载进前端容器。
+            # 仅当证书不存在时才生成；若服务器 IP 变更，删掉该目录重跑部署即可重新生成。
+            SERVER_IP="${{ secrets.SSH_HOST }}"
+            mkdir -p /opt/insight-text2sql/certs
+            if [ ! -f /opt/insight-text2sql/certs/fullchain.pem ]; then
+              echo "🔐 生成自签名证书（CN=$SERVER_IP）..."
+              openssl req -x509 -newkey rsa:2048 -nodes \
+                -keyout /opt/insight-text2sql/certs/privkey.pem \
+                -out /opt/insight-text2sql/certs/fullchain.pem \
+                -days 3650 -subj "/CN=$SERVER_IP" \
+                -addext "subjectAltName=IP:$SERVER_IP"
+            else
+              echo "🔐 已存在自签名证书，跳过生成"
+            fi
+
             export INSIGHT_IMAGE_TAG="$IMAGE_TAG"
             export INSIGHT_IMAGE_BACKEND="$DOCKERHUB_USERNAME/insight-text2sql-backend"
             export INSIGHT_IMAGE_FRONTEND="$DOCKERHUB_USERNAME/insight-text2sql-frontend"
