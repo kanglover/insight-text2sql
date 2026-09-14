@@ -178,10 +178,12 @@ jobs:
             export INSIGHT_IMAGE_TAG="$IMAGE_TAG"
             export INSIGHT_IMAGE_BACKEND="$DOCKERHUB_USERNAME/insight-text2sql-backend"
             export INSIGHT_IMAGE_FRONTEND="$DOCKERHUB_USERNAME/insight-text2sql-frontend"
-            docker compose -f deploy/docker-compose.prod.yml $MYSQL_FILES pull
-            docker compose -f deploy/docker-compose.prod.yml $MYSQL_FILES up -d
+            # 注意：compose 以 -f 指定的文件所在目录（deploy/）为项目目录加载 .env，
+            # 而运行时 .env 在 /opt/insight-text2sql/，必须显式 --env-file 才能读到 WEB_PORT 等。
+            docker compose --env-file .env -f deploy/docker-compose.prod.yml $MYSQL_FILES pull
+            docker compose --env-file .env -f deploy/docker-compose.prod.yml $MYSQL_FILES up -d
             docker image prune -f
 
             echo "✅ 部署完成，当前服务状态："
-            docker compose -f deploy/docker-compose.prod.yml $MYSQL_FILES ps
+            docker compose --env-file .env -f deploy/docker-compose.prod.yml $MYSQL_FILES ps
 
