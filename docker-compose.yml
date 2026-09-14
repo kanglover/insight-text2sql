@@ -1,0 +1,47 @@
+# 一键起前后端（默认 SQLite，零外部依赖）。
+#   docker compose up -d --build      首次构建并启动
+#   docker compose logs -f backend    看后端日志
+#   docker compose down               停止
+#
+# 部署到服务器要换成 MySQL 时，叠加覆盖层即可，基础文件不用改：
+#   docker compose -f docker-compose.yml -f docker-compose.mysql.yml up -d --build
+#   （或 make up-mysql）它会额外拉起 mysql 容器并把 DATABASE_URL 切过去。
+#
+# 默认用「规则引擎」离线跑（LLM_PROVIDER=rule），不需要任何密钥就能演示；
+# 想接大模型时在项目根目录建 .env 覆盖下面的 LLM_* 变量即可。
+services:
+  backend:
+    build:
+      context: .
+      dockerfile: deploy/Dockerfile.backend
+    image: insight-text2sql-backend:1.0.0
+    container_name: insight-backend
+    environment:
+      LLM_PROVIDER: ${LLM_PROVIDER:-rule}
+      LLM_MODEL: ${LLM_MODEL:-glm-4-plus}
+      LLM_BASE_URL: ${LLM_BASE_URL:-https://open.bigmodel.cn/api/paas/v4}
+      LLM_API_KEY: ${LLM_API_KEY:-}
+      LLM_TEMPERATURE: ${LLM_TEMPERATURE:-0}
+      DATABASE_URL: sqlite+aiosqlite:////data/insight.db
+      CORS_ORIGINS: ${CORS_ORIGINS:-*}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+    volumes:
+      # 持久化 SQLite，容器重建后历史会话与日志还在
+      - insight-data:/data
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: .
+      dockerfile: deploy/Dockerfile.frontend
+    image: insight-text2sql-frontend:1.0.0
+    container_name: insight-frontend
+    ports:
+      - "${WEB_PORT:-8080}:80"
+    depends_on:
+      backend:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  insight-data:

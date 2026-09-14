@@ -1,0 +1,30 @@
+# ---------- 后端镜像 ----------
+# 单阶段即可：依赖是纯 Python 的，没有编译产物需要跨阶段拷贝。
+FROM python:3.12-slim
+
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PIP_NO_CACHE_DIR=1 \
+    TZ=Asia/Shanghai
+
+WORKDIR /app
+
+# 先装依赖，利用 Docker 层缓存：只改业务代码时不会重新下载依赖
+COPY backend/requirements.txt ./requirements.txt
+RUN pip install --no-cache-dir -r requirements.txt
+
+COPY backend/ ./
+
+# 单独 docker run 这个镜像时的兜底默认值：用 SQLite，开箱就能跑。
+# 用 compose 部署时会被 environment 里的 DATABASE_URL 覆盖（MySQL 覆盖层会切成 MySQL），
+# 所以这里写 SQLite 不会导致部署时悄悄用错库。
+RUN mkdir -p /data
+ENV DATABASE_URL=sqlite+aiosqlite:////data/insight.db
+
+EXPOSE 8000
+
+# 健康检查直接打业务接口，避免"进程活着但服务不可用"
+HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
+    CMD python -c "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/api/health', timeout=4).status == 200 else 1)"
+
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]

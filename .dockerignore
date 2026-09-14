@@ -1,0 +1,14 @@
+# Docker 构建上下文排除项。
+# node_modules / var 这类产物体积大且由构建过程重新生成，不需要进镜像。
+**/node_modules
+**/dist
+**/__pycache__
+**/*.pyc
+backend/var
+.tools
+.git
+.env
+**/.env.local
+*.log
+.DS_Store
+docs

@@ -1,0 +1,21 @@
+# 后端运行时依赖（与 backend/pyproject.toml 的 dependencies 保持一致）。
+# 拆出一份 requirements.txt 是为了让 Docker 构建与 CI 能直接用 pip 安装。
+fastapi>=0.115
+uvicorn[standard]>=0.32
+pydantic>=2.9
+pydantic-settings>=2.6
+sqlalchemy[asyncio]>=2.0.36
+aiosqlite>=0.20
+greenlet>=3.0
+httpx>=0.27
+jieba>=0.42.1
+sqlglot>=25.0
+python-dotenv>=1.0
+
+# ---- MySQL 驱动（部署到 MySQL 时必需）----
+# aiomysql 是纯 Python 实现，不需要编译工具链，可以直接装进 slim 镜像。
+aiomysql>=0.2
+# MySQL 8 默认认证插件是 caching_sha2_password，PyMySQL/aiomysql 走这条认证
+# 路径时必须依赖 cryptography，否则连接期直接报
+# "cryptography package is required for sha256_password or caching_sha2_password"。
+cryptography>=42.0

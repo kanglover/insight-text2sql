@@ -1,0 +1,53 @@
+-- MySQL 初始化脚本
+--
+-- 用途一：docker compose 的 MySQL 覆盖层会把它挂进 /docker-entrypoint-initdb.d，
+--         首次初始化（数据卷为空时）自动执行；已初始化过则不会再跑。
+-- 用途二：如果你要用「外部已有的 MySQL」，用管理员账号手动执行一遍即可：
+--         mysql -uroot -p < deploy/mysql/00-init.sql
+--
+-- 注意：MySQL 的 /docker-entrypoint-initdb.d 只在数据卷为空时执行，
+--       所以改这个脚本对已经跑起来的库不生效，需要改库请直接执行 SQL。
+
+-- ---------------------------------------------------------------- 建库
+-- 中文与 emoji 必须 utf8mb4；MySQL 的 utf8 是三字节的 utf8mb3，存不下 emoji。
+-- 排序规则用 unicode_ci 而不是 general_ci：前者按 Unicode 标准排序，中文更准。
+CREATE DATABASE IF NOT EXISTS `insight`
+  DEFAULT CHARACTER SET utf8mb4
+  DEFAULT COLLATE utf8mb4_unicode_ci;
+
+-- ---------------------------------------------------------------- 最小权限（可选）
+--
+-- 下面这段默认是注释掉的，因为应用启动时会「自动建表 + 自动灌种子数据」，
+-- 需要对 dw_* 有写权限。开启前请先想清楚要不要保留这个自动灌数的行为：
+--
+--   保留自动灌数（默认）：跳过下面这段，用普通账号即可。
+--   去掉自动灌数（生产推荐）：
+--     1. 用管理员账号跑一次 `python -m scripts.seed` 把数据灌好；
+--     2. 放开下面的注释，让应用账号对 dw_* 只剩 SELECT；
+--     3. 这样即使 SQL 网关被绕过，数仓事实表在数据库层面也写不动。
+--
+-- CREATE USER IF NOT EXISTS 'insight'@'%' IDENTIFIED BY '换成你的密码';
+-- -- 数仓维表与事实表：只读
+-- GRANT SELECT ON `insight`.`dw_dim_org`            TO 'insight'@'%';
+-- GRANT SELECT ON `insight`.`dw_dim_industry`       TO 'insight'@'%';
+-- GRANT SELECT ON `insight`.`dw_dim_product_line`   TO 'insight'@'%';
+-- GRANT SELECT ON `insight`.`dw_dim_product`        TO 'insight'@'%';
+-- GRANT SELECT ON `insight`.`dw_dim_date`           TO 'insight'@'%';
+-- GRANT SELECT ON `insight`.`dw_fact_revenue`       TO 'insight'@'%';
+-- GRANT SELECT ON `insight`.`dw_fact_target`        TO 'insight'@'%';
+-- GRANT SELECT ON `insight`.`dw_fact_project_risk`  TO 'insight'@'%';
+-- -- 元数据知识库：只读（由脚本灌入，运行时不改）
+-- GRANT SELECT ON `insight`.`meta_table`            TO 'insight'@'%';
+-- GRANT SELECT ON `insight`.`meta_column`           TO 'insight'@'%';
+-- GRANT SELECT ON `insight`.`meta_metric`           TO 'insight'@'%';
+-- GRANT SELECT ON `insight`.`meta_column_metric`    TO 'insight'@'%';
+-- GRANT SELECT ON `insight`.`meta_value`            TO 'insight'@'%';
+-- GRANT SELECT ON `insight`.`meta_question_sql`     TO 'insight'@'%';
+-- -- 业务表：会话、消息、日志、反馈、配置需要读写
+-- GRANT SELECT, INSERT, UPDATE, DELETE ON `insight`.`biz_chat_session`  TO 'insight'@'%';
+-- GRANT SELECT, INSERT, UPDATE, DELETE ON `insight`.`biz_chat_message`  TO 'insight'@'%';
+-- GRANT SELECT, INSERT, UPDATE, DELETE ON `insight`.`biz_query_log`     TO 'insight'@'%';
+-- GRANT SELECT, INSERT, UPDATE, DELETE ON `insight`.`biz_feedback`      TO 'insight'@'%';
+-- GRANT SELECT, INSERT, UPDATE, DELETE ON `insight`.`biz_app_setting`   TO 'insight'@'%';
+-- GRANT SELECT, INSERT, UPDATE, DELETE ON `insight`.`biz_model_setting` TO 'insight'@'%';
+-- FLUSH PRIVILEGES;

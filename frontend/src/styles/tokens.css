@@ -1,0 +1,59 @@
+/**
+ * 设计令牌：与 demo（经管之星）保持一致，方便对照验收。
+ * 主色 #2F54EB，浅色后台风格，卡片圆角 12px、控件圆角 8px。
+ */
+:root {
+  --primary: #2f54eb;
+  --primary-dark: #1d3ec7;
+  --primary-light: #e0e7ff;
+  --primary-soft: #f4f6ff;
+
+  --success: #16a34a;
+  --success-light: #f0fdf4;
+  --warning: #f59e0b;
+  --warning-light: #fffbeb;
+  --danger: #e64398;
+  --danger-light: #fdf2f8;
+
+  /* 语音录制态：用暖红，和设计系统里的 --danger（品红）区分开 */
+  --record: #dc2626;
+  --record-light: #fef2f2;
+
+  --text-primary: #111827;
+  --text-body: #4b5563;
+  --text-hint: #9ca3af;
+
+  --bg: #ffffff;
+  --surface: #ffffff;
+  --bg-muted: #f3f4f6;
+  --bg-soft: #fafbfc;
+  --border: #e5e7eb;
+  --border-strong: #d1d5db;
+
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.04);
+  --shadow-md: 0 1px 3px rgba(0, 0, 0, 0.06), 0 1px 2px rgba(0, 0, 0, 0.04);
+  --shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.12);
+  --shadow-panel: -4px 0 20px rgba(0, 0, 0, 0.08);
+
+  --r-card: 12px;
+  --r-btn: 8px;
+  --r-input: 8px;
+  --r-tag: 6px;
+  --r-dialog: 16px;
+
+  --h-btn: 40px;
+  --h-btn-sm: 34px;
+  --h-input: 40px;
+  --h-nav: 46px;
+
+  --navy: #1e3a5f;
+  --navy-soft: #2d5a87;
+  --navy-hint: #6b8cae;
+
+  --chart-1: #2f54eb;
+  --chart-2: #36cfc9;
+  --chart-3: #f5a623;
+  --chart-4: #8b5cf6;
+  --chart-5: #4f6ff5;
+  --chart-6: #c73a7a;
+}
