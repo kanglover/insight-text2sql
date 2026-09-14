@@ -1,5 +1,8 @@
 # ---------- 1. 构建前端静态资源 ----------
-FROM node:20-alpine AS build
+# 用 Debian/glibc 基础镜像（而非 alpine/musl）：vite/rollup/esbuild 的原生二进制在
+# musl 下偶发加载/兼容问题，导致 `npm run build` 在 CI 的 alpine 容器里失败；
+# 而 ubuntu(glibc) 的 test-frontend 阶段同一条命令能过，故构建阶段统一走 glibc。
+FROM node:20-slim AS build
 
 WORKDIR /app
 

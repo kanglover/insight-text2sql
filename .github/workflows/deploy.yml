@@ -105,7 +105,7 @@ jobs:
 
   # ---------------------------------------------------------------- 部署到服务器
   deploy:
-    name: 部署到腾讯轻量云服务器
+    name: 部署到服务器
     needs: build-and-push
     runs-on: ubuntu-latest
     env:
