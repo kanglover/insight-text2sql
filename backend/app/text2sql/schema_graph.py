@@ -9,10 +9,9 @@
 
 from functools import lru_cache
 
-from app.db.base import Base
-
 # 触发模型注册
 from app import models  # noqa: F401
+from app.db.base import Base
 
 
 @lru_cache

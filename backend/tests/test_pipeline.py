@@ -104,7 +104,7 @@ async def test_pipeline_auto_falls_back_to_rules_when_llm_unavailable(database, 
 @pytest.mark.asyncio
 async def test_pipeline_corrects_invalid_sql(database, snapshot):
     """第一次返回写操作 SQL（会被安全网关拦下），第二次返回合法 SQL。"""
-    llm = ScriptedLLM([f"DROP TABLE dw_fact_revenue",
+    llm = ScriptedLLM(["DROP TABLE dw_fact_revenue",
                        GOOD_SQL,
                        "已修正结论。", "追问一\n追问二"])
     events, state = await _run(database, snapshot, llm, "各经营单元收入")

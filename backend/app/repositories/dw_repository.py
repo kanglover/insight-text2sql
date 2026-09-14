@@ -9,7 +9,6 @@
 """
 
 import asyncio
-import time
 from typing import Any
 
 from sqlalchemy import text
@@ -81,7 +80,6 @@ class DwRepository:
 
     async def run(self, sql: str) -> QueryResult:
         await self._ensure_readonly()
-        started = time.perf_counter()
         try:
             result = await asyncio.wait_for(
                 self.session.execute(text(sql)), timeout=settings.sql_timeout_seconds
@@ -89,7 +87,6 @@ class DwRepository:
         except TimeoutError as exc:  # pragma: no cover - 触发需要构造慢查询
             raise TimeoutError(f"SQL 执行超时（>{settings.sql_timeout_seconds}s）") from exc
         rows = result.fetchall()
-        elapsed_ms = int((time.perf_counter() - started) * 1000)
         columns = list(result.keys())
         data: list[list[Any]] = []
         for i, row in enumerate(rows):

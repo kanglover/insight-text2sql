@@ -1,7 +1,6 @@
 """⑧⑨⑩⑪ 生成 → 校验 → 修正 → 执行。"""
 
 import time
-from typing import Any
 
 from app.core.log import get_logger
 from app.text2sql import generators

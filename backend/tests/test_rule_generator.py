@@ -4,8 +4,8 @@
 如果哪天改了种子数据或指标定义导致这些断言挂了，说明口径被改动了。
 """
 
-import sqlalchemy as sa
 import pytest
+import sqlalchemy as sa
 
 from app.text2sql.generators.rule_generator import (
     detect_intent,

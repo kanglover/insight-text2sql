@@ -16,8 +16,8 @@ from sqlalchemy import delete, insert
 
 from app.data.dimensions import (
     DATA_CUTOFF_MONTH_2026,
-    INDUSTRY_WEIGHT,
     INDUSTRIES,
+    INDUSTRY_WEIGHT,
     MONTH_SEASONALITY,
     ORG_BASE_REVENUE,
     ORG_BIZ_TARGET,
@@ -347,8 +347,8 @@ def build_meta(dims: dict[str, list[dict[str, Any]]]) -> dict[str, list[dict[str
 
 async def seed_database(database, reset: bool = True) -> dict[str, int]:
     """把维度、事实、元数据写入数据库，返回各表行数。"""
-    from app.models import biz, dw, meta  # noqa: F401  触发注册
     from app.db.base import Base
+    from app.models import biz, dw, meta  # noqa: F401  触发注册
 
     dims = build_dims()
     facts = build_facts(dims)

@@ -11,8 +11,6 @@ import time
 from collections.abc import AsyncIterator
 from typing import Any
 
-from sqlalchemy.ext.asyncio import async_sessionmaker
-
 from app.core.config import settings
 from app.core.log import get_logger
 from app.db.session import Database

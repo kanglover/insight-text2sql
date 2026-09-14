@@ -98,9 +98,8 @@ def extract_slots(question: str, snapshot: MetaSnapshot) -> Slots:
         elif value.column_name == "industry_name":
             if low in text:
                 slots.industry = value.value
-        elif value.column_name == "product_line_name":
-            if low in text:
-                slots.product_line = value.value
+        elif value.column_name == "product_line_name" and low in text:
+            slots.product_line = value.value
 
     if slots.industry is None:
         for alias, standard in INDUSTRY_ALIASES.items():

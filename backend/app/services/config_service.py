@@ -3,7 +3,6 @@
 import json
 from typing import Any
 
-from sqlalchemy import select
 from sqlalchemy.ext.asyncio import async_sessionmaker
 
 from app.models.biz import AppSetting
