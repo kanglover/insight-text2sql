@@ -9,7 +9,7 @@
 
 services:
   backend:
-    image: ghcr.io/kanglover/insight-text2sql-backend:${INSIGHT_IMAGE_TAG:-latest}
+    image: ${INSIGHT_IMAGE_BACKEND:-ghcr.io/kanglover/insight-text2sql-backend}:${INSIGHT_IMAGE_TAG:-latest}
     container_name: insight-backend
     environment:
       LLM_PROVIDER: ${LLM_PROVIDER:-rule}
@@ -26,7 +26,7 @@ services:
     restart: unless-stopped
 
   frontend:
-    image: ghcr.io/kanglover/insight-text2sql-frontend:${INSIGHT_IMAGE_TAG:-latest}
+    image: ${INSIGHT_IMAGE_FRONTEND:-ghcr.io/kanglover/insight-text2sql-frontend}:${INSIGHT_IMAGE_TAG:-latest}
     container_name: insight-frontend
     ports:
       # 改端口：在 .env 里设 WEB_PORT=80 即可直接走 80

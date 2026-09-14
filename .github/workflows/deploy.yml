@@ -17,17 +17,15 @@ on:
           - mysql
           - sqlite
 
-# 推送到 GHCR 需要写包权限；读取仓库源码需要读权限
+# 读取仓库源码需要读权限（镜像推送到腾讯云 CCR，不再用 GitHub Packages）
 permissions:
   contents: read
-  packages: write
 
 env:
-  REGISTRY: ghcr.io
-  IMAGE_BACKEND: ghcr.io/kanglover/insight-text2sql-backend
-  IMAGE_FRONTEND: ghcr.io/kanglover/insight-text2sql-frontend
-  # 用 commit sha 作为镜像 tag，保证每次部署可复现、可回滚
+  # 镜像仓库：腾讯云容器镜像服务（CCR 个人版 / TCR 企业版），值均来自 GitHub Secrets，不硬编码
   IMAGE_TAG: ${{ github.sha }}
+  IMAGE_BACKEND: ${{ secrets.CCR_REGISTRY }}/${{ secrets.CCR_NAMESPACE }}/insight-text2sql-backend
+  IMAGE_FRONTEND: ${{ secrets.CCR_REGISTRY }}/${{ secrets.CCR_NAMESPACE }}/insight-text2sql-frontend
 
 jobs:
   # ---------------------------------------------------------------- 测试
@@ -73,17 +71,17 @@ jobs:
 
   # ---------------------------------------------------------------- 构建并推送镜像
   build-and-push:
-    name: 构建并推送镜像到 GHCR
+    name: 构建并推送镜像到腾讯云 CCR
     needs: [test-backend, test-frontend]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: 登录 GHCR
+      - name: 登录腾讯云容器镜像服务
         uses: docker/login-action@v3
         with:
-          registry: ${{ env.REGISTRY }}
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
+          registry: ${{ secrets.CCR_REGISTRY }}
+          username: ${{ secrets.CCR_USERNAME }}
+          password: ${{ secrets.CCR_PASSWORD }}
       - name: 构建并推送后端镜像
         uses: docker/build-push-action@v6
         with:
@@ -139,7 +137,7 @@ jobs:
           host: ${{ secrets.SSH_HOST }}
           username: ${{ secrets.SSH_USER }}
           key: ${{ secrets.SSH_PRIVATE_KEY }}
-          envs: DB_PROFILE,IMAGE_TAG,GITHUB_TOKEN
+          envs: DB_PROFILE,IMAGE_TAG,CCR_REGISTRY,CCR_NAMESPACE,CCR_USERNAME,CCR_PASSWORD
           script: |
             set -e
             cd /opt/insight-text2sql
@@ -150,8 +148,8 @@ jobs:
               exit 1
             fi
 
-            # 登录 GHCR 拉取镜像（GITHUB_TOKEN 在本次任务期间有效，可拉取本仓库包）
-            echo "$GITHUB_TOKEN" | docker login ghcr.io -u "${{ github.repository_owner }}" --password-stdin
+            # 登录腾讯云容器镜像服务拉取镜像
+            echo "$CCR_PASSWORD" | docker login "$CCR_REGISTRY" -u "$CCR_USERNAME" --password-stdin
 
             MYSQL_FILES=""
             if [ "$DB_PROFILE" = "mysql" ]; then
@@ -159,11 +157,12 @@ jobs:
             fi
 
             export INSIGHT_IMAGE_TAG="$IMAGE_TAG"
+            export INSIGHT_IMAGE_BACKEND="$CCR_REGISTRY/$CCR_NAMESPACE/insight-text2sql-backend"
+            export INSIGHT_IMAGE_FRONTEND="$CCR_REGISTRY/$CCR_NAMESPACE/insight-text2sql-frontend"
             docker compose -f deploy/docker-compose.prod.yml $MYSQL_FILES pull
             docker compose -f deploy/docker-compose.prod.yml $MYSQL_FILES up -d
             docker image prune -f
 
             echo "✅ 部署完成，当前服务状态："
             docker compose -f deploy/docker-compose.prod.yml $MYSQL_FILES ps
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+

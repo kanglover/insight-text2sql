@@ -6,6 +6,7 @@
 **/*.tsbuildinfo
 **/__pycache__
 **/*.pyc
+**/.venv
 backend/var
 .tools
 .git
