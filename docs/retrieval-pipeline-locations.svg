@@ -1,0 +1,72 @@
+<!--
+  text2sql 混合检索流水线 · 代码位置图
+  说明：把"用户问题 → 候选表"的检索流水线，与各检索组件的真实代码位置标注出来。
+  对应源码：
+    - 分词 / IDF：backend/app/utils/text.py
+    - 三路召回 / 合并：backend/app/text2sql/retrieval.py
+    - 实体（同义词/别名/取值字典）：backend/app/entities.py
+  注意：图中的 file:line 随代码变动可能过时，请以实际源码为准。
+-->
+<svg viewBox="0 0 680 458" width="100%" role="img" xmlns="http://www.w3.org/2000/svg">
+  <title>text2sql 混合检索流水线及代码位置</title>
+  <desc>从用户问题到候选表的流程，标注 jieba 分词、同义词/别名扩展、取值精确匹配各自的代码位置</desc>
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M2 1L8 5L2 9" fill="none" stroke="context-stroke" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+    </marker>
+  </defs>
+
+  <g class="box">
+    <rect x="240" y="30" width="200" height="44" rx="8" stroke-width="0.5" fill="#F1EFE8" stroke="#5F5E5A"/>
+    <text x="340" y="48" text-anchor="middle" dominant-baseline="central" font-family="sans-serif" font-size="14" font-weight="500" fill="#2C2C2A">用户问题</text>
+    <text x="340" y="64" text-anchor="middle" dominant-baseline="central" font-family="sans-serif" font-size="12" fill="#5F5E5A">"上海代表处的收入"</text>
+  </g>
+
+  <g class="node c-blue">
+    <rect x="210" y="100" width="260" height="44" rx="8" stroke-width="0.5" fill="#E6F1FB" stroke="#185FA5"/>
+    <text x="340" y="118" text-anchor="middle" dominant-baseline="central" font-family="sans-serif" font-size="14" font-weight="500" fill="#0C447C">query_terms()</text>
+    <text x="340" y="134" text-anchor="middle" dominant-baseline="central" font-family="sans-serif" font-size="12" fill="#185FA5">text.py:56 · jieba 分词 + 停用词 + IDF</text>
+  </g>
+
+  <g class="node c-teal">
+    <rect x="40" y="200" width="180" height="56" rx="8" stroke-width="0.5" fill="#E1F5EE" stroke="#0F6E56"/>
+    <text x="130" y="220" text-anchor="middle" dominant-baseline="central" font-family="sans-serif" font-size="14" font-weight="500" fill="#04342C">recall_columns()</text>
+    <text x="130" y="238" text-anchor="middle" dominant-baseline="central" font-family="sans-serif" font-size="12" fill="#0F6E56">字段召回 · synonyms 扩展</text>
+    <text x="130" y="252" text-anchor="middle" dominant-baseline="central" font-family="sans-serif" font-size="12" fill="#0F6E56">retrieval.py</text>
+  </g>
+
+  <g class="node c-teal">
+    <rect x="250" y="200" width="180" height="56" rx="8" stroke-width="0.5" fill="#E1F5EE" stroke="#0F6E56"/>
+    <text x="340" y="220" text-anchor="middle" dominant-baseline="central" font-family="sans-serif" font-size="14" font-weight="500" fill="#04342C">recall_metrics()</text>
+    <text x="340" y="238" text-anchor="middle" dominant-baseline="central" font-family="sans-serif" font-size="12" fill="#0F6E56">指标召回 · aliases 扩展</text>
+    <text x="340" y="252" text-anchor="middle" dominant-baseline="central" font-family="sans-serif" font-size="12" fill="#0F6E56">retrieval.py</text>
+  </g>
+
+  <g class="node c-teal">
+    <rect x="460" y="200" width="180" height="56" rx="8" stroke-width="0.5" fill="#E1F5EE" stroke="#0F6E56"/>
+    <text x="550" y="220" text-anchor="middle" dominant-baseline="central" font-family="sans-serif" font-size="14" font-weight="500" fill="#04342C">recall_values()</text>
+    <text x="550" y="238" text-anchor="middle" dominant-baseline="central" font-family="sans-serif" font-size="12" fill="#0F6E56">取值召回 · 字典精确匹配</text>
+    <text x="550" y="252" text-anchor="middle" dominant-baseline="central" font-family="sans-serif" font-size="12" fill="#0F6E56">retrieval.py</text>
+  </g>
+
+  <g class="box">
+    <rect x="210" y="320" width="260" height="44" rx="8" stroke-width="0.5" fill="#F1EFE8" stroke="#5F5E5A"/>
+    <text x="340" y="338" text-anchor="middle" dominant-baseline="central" font-family="sans-serif" font-size="14" font-weight="500" fill="#2C2C2A">merge_context()</text>
+    <text x="340" y="354" text-anchor="middle" dominant-baseline="central" font-family="sans-serif" font-size="12" fill="#5F5E5A">三路收敛 → 候选表 · retrieval.py</text>
+  </g>
+
+  <g class="box">
+    <rect x="210" y="394" width="260" height="44" rx="8" stroke-width="0.5" fill="#F1EFE8" stroke="#5F5E5A"/>
+    <text x="340" y="412" text-anchor="middle" dominant-baseline="central" font-family="sans-serif" font-size="14" font-weight="500" fill="#2C2C2A">候选表上下文</text>
+    <text x="340" y="428" text-anchor="middle" dominant-baseline="central" font-family="sans-serif" font-size="12" fill="#5F5E5A">build_table_context → 喂给 LLM</text>
+  </g>
+
+  <path class="arr" d="M340 74 L340 100" fill="none" stroke="#5F5E5A" stroke-width="1.5" marker-end="url(#arrow)"/>
+  <path class="arr" d="M340 144 L340 180 L130 180 L130 200" fill="none" stroke="#5F5E5A" stroke-width="1.5" marker-end="url(#arrow)"/>
+  <path class="arr" d="M340 180 L340 200" fill="none" stroke="#5F5E5A" stroke-width="1.5" marker-end="url(#arrow)"/>
+  <path class="arr" d="M340 180 L550 180 L550 200" fill="none" stroke="#5F5E5A" stroke-width="1.5" marker-end="url(#arrow)"/>
+  <path class="arr" d="M130 256 L130 288 L340 288 L340 320" fill="none" stroke="#5F5E5A" stroke-width="1.5" marker-end="url(#arrow)"/>
+  <path class="arr" d="M340 256 L340 320" fill="none" stroke="#5F5E5A" stroke-width="1.5" marker-end="url(#arrow)"/>
+  <path class="arr" d="M550 256 L550 288 L340 288 L340 320" fill="none" stroke="#5F5E5A" stroke-width="1.5" marker-end="url(#arrow)"/>
+  <path class="arr" d="M340 364 L340 394" fill="none" stroke="#5F5E5A" stroke-width="1.5" marker-end="url(#arrow)"/>
+</svg>
