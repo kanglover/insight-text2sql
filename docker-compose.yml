@@ -50,6 +50,10 @@ services:
     container_name: insight-frontend
     ports:
       - "${WEB_PORT:-8080}:80"
+    # 本地用 HTTP 版 nginx 配置覆盖镜像内那份（镜像内的是生产用，含 443 HTTPS 需要证书，
+    # 本地没挂证书卷会崩）。生产部署走 deploy/docker-compose.prod.yml，不受影响。
+    volumes:
+      - ./deploy/nginx.dev.conf:/etc/nginx/conf.d/default.conf:ro
     depends_on:
       backend:
         condition: service_healthy
