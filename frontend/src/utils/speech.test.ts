@@ -4,7 +4,7 @@
  * 只测纯函数：这几个函数的输出直接决定「AI 回复被念成什么样」以及
  * 「语音输入失败时用户看到什么」，是这一块里真正值得锁住的行为。
  * 浏览器 API 调用部分（useSpeech.ts）依赖真实音频环境，不做单测，
- * 由 .tools/screenshot-voice.mjs 做运行态冒烟。
+ * 由 frontend/tests/e2e/screenshot-voice.mjs 做运行态冒烟。
  */
 
 import { describe, expect, it } from 'vitest'

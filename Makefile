@@ -7,9 +7,12 @@ PIP := $(VENV)/bin/pip
 PYBIN := $(CURDIR)/$(VENV)/bin/python
 NPM ?= npm
 WEB_PORT ?= 8080
+UI_BASE ?= http://127.0.0.1:5173
+UI_BASE ?= http://127.0.0.1:5173
 
 .PHONY: help setup venv seed backend frontend dev test test-backend build check \
-        docker-build up up-mysql up-demo down logs clean reset mysql-shell
+        docker-build up up-mysql up-demo down logs clean reset mysql-shell \
+        smoke smoke-setup
 
 help: ## 显示所有可用命令
 	@grep -E '^[a-zA-Z_-]+:.*## ' $(MAKEFILE_LIST) \
@@ -40,6 +43,17 @@ frontend: ## 启动前端开发服务器（http://127.0.0.1:5173，已代理 /ap
 
 ask: ## 命令行问数：make ask Q="2026年各经营单元的收入和完成率"
 	cd backend && $(PYBIN) -m scripts.ask "$(Q)"
+
+# ------------------------------------------------------------------ 前端人工验收（冒烟截图）
+
+smoke: ## 跑前端 UI 冒烟验收（需先 make frontend 起服务；浏览器见 make smoke-setup）
+	cd frontend && node tests/e2e/screenshot.mjs $(UI_BASE)
+	cd frontend && node tests/e2e/screenshot-chart.mjs $(UI_BASE)
+	cd frontend && node tests/e2e/screenshot-voice.mjs $(UI_BASE)
+	@echo "截图已保存到 /tmp/insight-shots；任一脚本报错会以非零码退出"
+
+smoke-setup: ## 安装 Playwright 浏览器（make smoke 前置，仅首次/换机需要）
+	cd frontend && $(NPM) exec -- playwright install chromium
 
 # ------------------------------------------------------------------ 质量
 

@@ -22,8 +22,7 @@ frontend/.vite/
 **/.env.local
 backend/.env
 
-# ---- 开发期辅助（截图脚本等）----
-.tools/
+# ---- 开发期辅助（冒烟截图脚本，纳入版本库）----
 
 # ---- 编辑器 / 系统 ----
 .DS_Store

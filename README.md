@@ -681,7 +681,7 @@ cd frontend && npm run typecheck           # strict + noUnusedLocals
   （断言的是传给 `setOption` 的配置对象，而不是画布像素）。
 - **浏览器语音 API 不依赖真实设备**：`useTts` / `useAsr` 通过 `vi.stubGlobal` 注入伪
   `speechSynthesis` / `webkitSpeechRecognition` 覆盖状态机全部分支；真实运行态另由
-  `.tools/screenshot-voice.mjs` 做无头冒烟（按钮渲染 → 点击 → 文案切换，零控制台报错）。
+  `frontend/tests/e2e/screenshot-voice.mjs` 做无头冒烟（按钮渲染 → 点击 → 文案切换，零控制台报错）。
 
 ---
 
