@@ -1,8 +1,12 @@
 """模型配置服务：可选模型清单、当前选中模型、新增模型与连接测试。
 
-安全说明：演示项目**不在数据库里保存 API Key 明文**，只保留后四位提示；
-真正生效的密钥始终来自后端环境变量（`LLM_API_KEY`）。
-这样「模型配置」页既完成了交互闭环，又不会把一个可用的凭据写进数据库。
+行为说明：
+- 模型全部由用户在前端「模型配置」页自行新增，后端**不预置任何模型**；
+  初始数据库里 `biz_model_setting` 为空，前端会提示「点击新增模型添加一个」。
+- 用户选择的模型（selected=1）会**真正用于推理链路**：`query_service` 构造 LLM 时
+  读取该模型的 base_url / model_name / api_key，缺省时回退到后端环境变量
+  （LLM_BASE_URL / LLM_MODEL / LLM_API_KEY）。
+- `api_key_hint` 只用于页面展示（后四位），不参与鉴权；真实 Key 保存在 `api_key` 列。
 """
 
 import time
@@ -15,53 +19,12 @@ from sqlalchemy.ext.asyncio import async_sessionmaker
 from app.core.config import settings
 from app.models.biz import ModelSetting
 
-# 首次启动时写入的预置模型（与 demo 的 mcDefaultModels 对应）
-DEFAULT_MODELS: list[dict[str, str]] = [
-    {
-        "name": "GLM-4-Plus（智谱）",
-        "base_url": "https://open.bigmodel.cn/api/paas/v4",
-        "model_name": "glm-4-plus",
-    },
-    {
-        "name": "DeepSeek-V3",
-        "base_url": "https://api.deepseek.com/v1",
-        "model_name": "deepseek-chat",
-    },
-    {
-        "name": "Qwen2.5-72B（通义）",
-        "base_url": "https://dashscope.aliyuncs.com/compatible-mode/v1",
-        "model_name": "qwen2.5-72b-instruct",
-    },
-    {
-        "name": "GPT-4o mini",
-        "base_url": "https://api.openai.com/v1",
-        "model_name": "gpt-4o-mini",
-    },
-]
-
 
 class ModelService:
     def __init__(self, session_factory: async_sessionmaker) -> None:
         self.session_factory = session_factory
 
-    async def ensure_seeded(self) -> None:
-        async with self.session_factory() as session:
-            existing = (await session.execute(select(ModelSetting.id))).first()
-            if existing:
-                return
-            for index, item in enumerate(DEFAULT_MODELS):
-                session.add(
-                    ModelSetting(
-                        name=item["name"],
-                        base_url=item["base_url"],
-                        model_name=item["model_name"],
-                        selected=1 if index == 0 else 0,
-                    )
-                )
-            await session.commit()
-
     async def list_models(self) -> list[dict[str, Any]]:
-        await self.ensure_seeded()
         async with self.session_factory() as session:
             rows = (
                 (await session.execute(select(ModelSetting).order_by(ModelSetting.id.asc())))
@@ -90,6 +53,7 @@ class ModelService:
                 name=display,
                 base_url=base_url,
                 model_name=model_name,
+                api_key=api_key.strip(),
                 api_key_hint=_hint(api_key),
                 note="用户新增",
             )
@@ -154,14 +118,52 @@ class ModelService:
                 "checked": "remote",
             }
 
-    @staticmethod
-    def runtime_model() -> dict[str, Any]:
-        """当前后端真实生效的模型（来自环境变量）。"""
+    async def get_selected(self) -> ModelSetting | None:
+        """返回当前被选中的模型记录（selected=1），没有则返回 None。"""
+        async with self.session_factory() as session:
+            return (
+                await session.execute(
+                    select(ModelSetting).where(ModelSetting.selected == 1)
+                )
+            ).scalars().first()
+
+    async def selected_connection(self) -> dict[str, Any] | None:
+        """选中模型的连接参数（供推理链路构造 LLM 使用）。
+
+        返回 {base_url, api_key, model_name}，缺省为 None（让调用方回退到环境变量）。
+        """
+        row = await self.get_selected()
+        if row is None:
+            return None
         return {
+            "base_url": row.base_url.strip() or None,
+            "api_key": row.api_key.strip() or None,
+            "model_name": row.model_name.strip() or None,
+        }
+
+    async def effective_model(self) -> dict[str, Any]:
+        """当前后端真实生效的模型：优先用「选中的模型」，缺 Key 时回退环境变量。"""
+        row = await self.get_selected()
+        has_db_key = bool(row and row.api_key.strip())
+        if row and (has_db_key or settings.llm_api_key.strip()):
+            base_url = row.base_url.strip() or settings.llm_base_url
+            model_name = row.model_name.strip() or settings.llm_model
+            api_key = row.api_key.strip() or settings.llm_api_key
+            source = "db_selected"
+            selected_id = row.id
+        else:
+            base_url = settings.llm_base_url
+            model_name = settings.llm_model
+            api_key = settings.llm_api_key
+            source = "env"
+            selected_id = None
+        return {
+            "source": source,
+            "selected_id": selected_id,
             "provider": settings.llm_provider,
-            "model_name": settings.llm_model,
-            "base_url": settings.llm_base_url,
-            "configured": bool(settings.llm_api_key.strip()),
+            "model_name": model_name,
+            "base_url": base_url,
+            "configured": bool(api_key.strip()),
             "temperature": settings.llm_temperature,
             "use_llm": settings.use_llm,
         }
@@ -174,6 +176,7 @@ class ModelService:
             "base_url": row.base_url,
             "model_name": row.model_name,
             "api_key_hint": row.api_key_hint,
+            "has_key": bool(row.api_key.strip()),
             "selected": bool(row.selected),
             "reachable": bool(row.reachable),
             "latency_ms": row.latency_ms,

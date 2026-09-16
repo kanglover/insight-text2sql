@@ -36,7 +36,7 @@ async def runtime_config(
 
     return ApiResponse.ok(
         {
-            "model": model_service.runtime_model(),
+            "model": await model_service.effective_model(),
             "sql": {
                 "row_limit": settings.sql_row_limit,
                 "timeout_seconds": settings.sql_timeout_seconds,

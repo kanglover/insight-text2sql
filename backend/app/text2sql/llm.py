@@ -140,10 +140,21 @@ class OpenAICompatLLM:
         raise LLMUnavailable(f"大模型调用失败：{last_error}")
 
 
-def build_llm(provider: str | None = None) -> LLMClient:
-    """按配置构造 LLM 客户端；未配置 Key 时返回 NullLLM。"""
+def build_llm(
+    provider: str | None = None,
+    *,
+    base_url: str | None = None,
+    api_key: str | None = None,
+    model: str | None = None,
+) -> LLMClient:
+    """按配置构造 LLM 客户端；未配置 Key 时返回 NullLLM。
+
+    `provider="rule"` 时强制走规则引擎（不调用大模型）。
+    传入 base_url / api_key / model 可覆盖环境变量默认值（用于「模型配置」选中的模型）；
+    任一参数为 None 时回退到对应的环境变量。
+    """
     mode = (provider or settings.llm_provider).lower()
     if mode == "rule":
         return NullLLM()
-    client = OpenAICompatLLM()
+    client = OpenAICompatLLM(base_url=base_url, api_key=api_key, model=model)
     return client if client.available else NullLLM()

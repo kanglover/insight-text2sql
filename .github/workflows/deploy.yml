@@ -20,7 +20,6 @@ on:
           - mysql
           - sqlite
 
-# 读取仓库源码需要读权限（镜像推送到腾讯云 CCR，不再用 GitHub Packages）
 permissions:
   contents: read
 

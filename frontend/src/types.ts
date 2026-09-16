@@ -162,6 +162,7 @@ export interface ModelItem {
   base_url: string
   model_name: string
   api_key_hint: string
+  has_key: boolean
   selected: boolean
   reachable: boolean
   latency_ms: number

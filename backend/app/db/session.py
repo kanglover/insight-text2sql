@@ -71,6 +71,28 @@ class Database:
         async with self.engine.begin() as conn:
             await conn.run_sync(Base.metadata.create_all)
 
+    async def migrate(self) -> None:
+        """轻量迁移：`create_all` 只会建缺失的表、不会 ALTER 已有表。
+
+        这里为既有库补齐历史新增列（目前只有 `biz_model_setting.api_key`），
+        让老用户升级后不会因为缺列而报错。
+        """
+        table, column = "biz_model_setting", "api_key"
+        if self.dialect == "sqlite":
+            async with self.engine.connect() as conn:
+                rows = (await conn.execute(text(f"PRAGMA table_info({table})"))).fetchall()
+            exists = any(str(row[1]) == column for row in rows)
+        else:
+            async with self.engine.connect() as conn:
+                rows = (await conn.execute(text(f"SHOW COLUMNS FROM {table}"))).fetchall()
+            exists = any(str(row[0]) == column for row in rows)
+        if not exists:
+            logger.info("迁移：为 %s 补齐列 %s", table, column)
+            async with self.engine.begin() as conn:
+                await conn.execute(
+                    text(f"ALTER TABLE {table} ADD COLUMN {column} VARCHAR(255) NOT NULL DEFAULT ''")
+                )
+
     async def drop_all(self) -> None:
         from app import models  # noqa: F401
 

@@ -29,6 +29,7 @@ async def _bootstrap() -> None:
     from app.models.meta import MetaTable
 
     await db.create_all()
+    await db.migrate()
     async with db.session() as session:
         count = (
             await session.execute(select(func.count(MetaTable.id)))

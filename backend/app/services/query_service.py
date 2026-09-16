@@ -18,6 +18,7 @@ from app.entities import MetaSnapshot
 from app.repositories.dw_repository import DwRepository
 from app.repositories.meta_repository import MetaRepository
 from app.services.log_service import LogService
+from app.services.model_service import ModelService
 from app.services.session_service import SessionService
 from app.text2sql.graph import pipeline
 from app.text2sql.llm import build_llm
@@ -47,10 +48,19 @@ class QueryService:
             "error": None,
         }
         async with self.database.session() as session:
+            # 「模型配置」选中的模型优先；没有则回退到环境变量（build_llm 内部处理）
+            selected = await ModelService(self.database.session_factory).selected_connection()
+            llm_kwargs: dict[str, str | None] = {}
+            if selected:
+                llm_kwargs = {
+                    "base_url": selected["base_url"],
+                    "api_key": selected["api_key"],
+                    "model": selected["model_name"],
+                }
             context = PipelineContext(
                 meta_repository=MetaRepository(session),
                 dw_repository=DwRepository(session),
-                llm=build_llm(provider),
+                llm=build_llm(provider, **llm_kwargs),
                 snapshot=snapshot,
                 provider=provider or settings.llm_provider,
                 max_correction_retry=settings.sql_max_correction_retry,

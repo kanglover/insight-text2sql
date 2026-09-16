@@ -85,6 +85,8 @@ export const feedbackApi = {
 
 export interface RuntimeConfig {
   model: {
+    source: 'db_selected' | 'env'
+    selected_id: number | null
     provider: string
     model_name: string
     base_url: string

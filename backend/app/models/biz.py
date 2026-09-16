@@ -107,7 +107,11 @@ class ModelSetting(Base):
     name: Mapped[str] = mapped_column(String(128))
     base_url: Mapped[str] = mapped_column(String(255), default="")
     model_name: Mapped[str] = mapped_column(String(128), default="")
-    # 演示用：仅保存后四位，避免明文落库
+    # 真实 API Key：保存后供「被选中的模型」实际调用推理链路使用。
+    # 没有填 Key 的模型会回退到后端环境变量 LLM_API_KEY；本地/自托管 demo 可接受明文落库，
+    # 生产环境建议改用环境变量或密钥管理服务，不要让数据库承载可用凭据。
+    api_key: Mapped[str] = mapped_column(String(255), default="")
+    # 仅用于页面展示（后四位提示），不参与鉴权
     api_key_hint: Mapped[str] = mapped_column(String(64), default="")
     selected: Mapped[int] = mapped_column(Integer, default=0)
     latency_ms: Mapped[int] = mapped_column(Integer, default=0)

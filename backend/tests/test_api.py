@@ -213,13 +213,9 @@ async def test_app_config_voice_switches_round_trip(client):
 
 @pytest.mark.asyncio
 async def test_models_endpoints(client):
+    # 后端不预置模型：初始列表为空，由用户自行新增
     models = (await client.get("/api/models")).json()["data"]
-    assert len(models) >= 4
-    assert sum(1 for m in models if m["selected"]) == 1
-
-    target = models[1]
-    selected = (await client.post("/api/models/select", params={"model_id": target["id"]})).json()["data"]
-    assert selected["selected"] is True
+    assert isinstance(models, list)
 
     added = (
         await client.post(
@@ -235,7 +231,69 @@ async def test_models_endpoints(client):
     assert added["api_key_hint"] == "****3456"  # 只留后四位
     assert added["name"] == "自建模型"
 
+    # 选中刚新增的模型
+    selected = (await client.post("/api/models/select", params={"model_id": added["id"]})).json()["data"]
+    assert selected["selected"] is True
+
+    # 列表里恰好有一个被选中
+    models_after = (await client.get("/api/models")).json()["data"]
+    assert sum(1 for m in models_after if m["selected"]) == 1
+
     assert (await client.delete(f"/api/models/{added['id']}")).json()["data"]["deleted"]
+
+
+@pytest.mark.asyncio
+async def test_selected_model_drives_effective_model(client, monkeypatch):
+    """选中带 Key 的模型后，runtime 接口应反映 db_selected 来源与对应模型名。"""
+    from app.core import config as config_module
+
+    monkeypatch.setattr(config_module.settings, "llm_api_key", "")
+
+    before = (await client.get("/api/config/runtime")).json()["data"]["model"]
+    assert before["source"] == "env"
+
+    added = (
+        await client.post(
+            "/api/models",
+            json={
+                "base_url": "https://api.deepseek.com/v1",
+                "model_name": "deepseek-chat",
+                "api_key": "sk-selected-9999",
+                "name": "选中模型",
+            },
+        )
+    ).json()["data"]
+    await client.post("/api/models/select", params={"model_id": added["id"]})
+
+    after = (await client.get("/api/config/runtime")).json()["data"]["model"]
+    assert after["source"] == "db_selected"
+    assert after["selected_id"] == added["id"]
+    assert after["model_name"] == "deepseek-chat"
+    assert after["base_url"] == "https://api.deepseek.com/v1"
+    assert after["configured"] is True
+
+
+def test_build_llm_overrides(monkeypatch):
+    """build_llm 的 base_url/api_key/model 覆盖应生效；rule 模式强制走规则引擎。"""
+    from app.core import config as config_module
+    from app.text2sql.llm import NullLLM, OpenAICompatLLM, build_llm
+
+    # 清空环境变量 Key，确保「无 Key」分支可控
+    monkeypatch.setattr(config_module.settings, "llm_api_key", "")
+
+    rule = build_llm("rule")
+    assert isinstance(rule, NullLLM)
+
+    llm = build_llm("auto", base_url="https://x/v1", api_key="sk-abc", model="my-model")
+    assert isinstance(llm, OpenAICompatLLM)
+    assert llm.base_url == "https://x/v1"
+    assert llm.api_key == "sk-abc"
+    assert llm.model == "my-model"
+    assert llm.available is True
+
+    # 没有任何可用 Key 时（覆盖为空且环境变量也为空）回退到 NullLLM，不发起真实请求
+    no_key = build_llm("auto", base_url="https://x/v1", api_key=None, model="my-model")
+    assert isinstance(no_key, NullLLM)
 
 
 @pytest.mark.asyncio

@@ -31,6 +31,12 @@ services:
       DB_NAME: ${DB_NAME:-insight}
       CORS_ORIGINS: ${CORS_ORIGINS:-*}
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      # 容器出网代理：Docker 内无法直接解析外部大模型域名，需经宿主机网关出网。
+      # 用专用变量 BACKEND_PROXY（指向宿主机网关 IP，如 192.168.5.2:10808），避免被
+      # shell 已有的 HTTPS_PROXY(127.0.0.1) 覆盖。NO_PROXY 固定保护内部 MySQL / localhost 流量。
+      HTTP_PROXY: ${BACKEND_PROXY:-}
+      HTTPS_PROXY: ${BACKEND_PROXY:-}
+      NO_PROXY: mysql,localhost,127.0.0.1
     volumes:
       # 持久化 SQLite，容器重建后历史会话与日志还在
       - insight-data:/data

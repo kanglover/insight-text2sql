@@ -12,6 +12,8 @@ import { makeAppConfig } from '../test/fixtures'
 
 const RUNTIME: RuntimeConfig = {
   model: {
+    source: 'env',
+    selected_id: null,
     provider: 'openai',
     model_name: 'gpt-4o-mini',
     base_url: 'https://api.example.com',

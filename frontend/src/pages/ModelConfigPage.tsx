@@ -1,8 +1,9 @@
 /**
  * 模型配置页：对应 demo 的「系统管理 → 模型配置」。
  *
- * 安全约定：页面里填的 API Key 只用于「测试连通性」，不会保存到数据库
- * （后端只留后四位提示），真正生效的密钥始终来自后端环境变量。
+ * 这里选择的模型会真正驱动后端推理链路：保存后，后端问数时会读取
+ * 「选中模型」的 Base URL / 模型名 / API Key（缺省回退到环境变量）。
+ * 页面里填的 API Key 会保存到数据库并用于实际推理（仅展示后四位提示）。
  */
 
 import { useCallback, useEffect, useState } from 'react'
@@ -100,7 +101,7 @@ export function ModelConfigPage() {
       })
       setAddOpen(false)
       setDraft({ name: '', baseUrl: '', modelName: '', apiKey: '' })
-      flash('模型已新增（不会保存 API Key 明文）')
+      flash('模型已新增（已保存 API Key 用于推理）')
       await load()
     } catch (err) {
       setError((err as Error).message)
@@ -135,7 +136,7 @@ export function ModelConfigPage() {
       <div className="card model-config">
         <div className="mc-title">模型配置</div>
         <div className="mc-subtitle">
-          页面上的选择只代表「意向模型」；下列「后端实际生效」才是真正用于生成 SQL 的模型。
+          保存后，这里选中的模型会真正用于生成 SQL；没有填 Key 的模型会回退到后端环境变量 LLM_API_KEY。
         </div>
 
         <div className="mc-card">
@@ -186,7 +187,7 @@ export function ModelConfigPage() {
                   {current.api_key_hint ? (
                     <span className="mono">{current.api_key_hint}</span>
                   ) : (
-                    '未在页面保存（使用后端环境变量）'
+                    '未填写（使用后端环境变量 LLM_API_KEY）'
                   )}
                 </div>
                 {current.note ? <div>备注：{current.note}</div> : null}
@@ -245,7 +246,9 @@ export function ModelConfigPage() {
           后端实际生效
         </div>
         <div className="card-desc">
-          由环境变量 LLM_PROVIDER / LLM_MODEL / LLM_BASE_URL / LLM_API_KEY 决定，改这里不会影响它。
+          {runtime?.model.source === 'db_selected'
+            ? '当前由上方「模型配置」中选中的模型驱动。'
+            : '当前没有可用模型配置，回退到后端环境变量 LLM_PROVIDER / LLM_MODEL / LLM_BASE_URL / LLM_API_KEY。'}
         </div>
         <div className="stat-row" style={{ marginBottom: 0 }}>
           <div className="stat-card">
@@ -322,12 +325,12 @@ export function ModelConfigPage() {
           />
         </div>
         <div className="field">
-          <label htmlFor="m-key">API Key（可选，仅用于连接测试）</label>
+          <label htmlFor="m-key">API Key（保存后用于实际推理，缺省回退环境变量）</label>
           <input
             id="m-key"
             className="input"
             type="password"
-            placeholder="不会保存明文，只记录后四位"
+            placeholder="将保存到数据库，供选中模型实际调用；页面仅展示后四位"
             value={draft.apiKey}
             onChange={(event) => setDraft({ ...draft, apiKey: event.target.value })}
           />
